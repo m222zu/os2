@@ -80,6 +80,7 @@ void execute_command(const vector<string>& args) {
         if (args.size() > 1) cout << args[1] << endl;
     }
     else if (args[0] == "dummy") {
+        // Do nothing
     }
     else if (args[0] == "gcd") {
         if (args.size() > 2) {
