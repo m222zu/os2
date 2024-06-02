@@ -37,7 +37,7 @@ int gcd(int a, int b) {
     return a;
 }
 
-int prime(int n) {
+int prime_count(int n) {
     if (n < 2) return 0;
     vector<bool> is_prime(n + 1, true);
     is_prime[0] = is_prime[1] = false;
@@ -59,7 +59,7 @@ int sum_part(int start, int end) {
     return result;
 }
 
-int sum(int n, int m) {
+int sum(int n, int m = 1) {
     vector<future<int>> futures;
     int part_size = n / m;
     for (int i = 0; i < m; ++i) {
@@ -95,7 +95,7 @@ void execute_command(const vector<string>& args, bool is_bg = false, int duratio
             if (args.size() > 1) {
                 int n = stoi(args[1]);
                 unique_lock<mutex> lock(cout_mutex);
-                cout << prime(n) << endl;
+                cout << prime_count(n) << endl;
             }
         }
         else if (args[0] == "sum") {
