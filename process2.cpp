@@ -5,7 +5,6 @@
 #include <vector>
 #include <string>
 #include <sstream>
-#include <map>
 #include <chrono>
 #include <mutex>
 #include <cmath>
@@ -14,7 +13,6 @@
 using namespace std;
 
 mutex cout_mutex;
-int bg_count = 0;
 
 vector<string> split(const string& str, char delim) {
     stringstream ss(str);
@@ -74,60 +72,67 @@ int sum(int n, int m = 1) {
     return result;
 }
 
-void execute_command(const vector<string>& args, bool is_bg = false, int duration = 0) {
-    auto start_time = chrono::steady_clock::now();
-    while (true) {
-        if (!args.empty() && args[0] == "echo") {
+void execute_command(const vector<string>& args) {
+    if (args.empty()) return;
+
+    if (args[0] == "echo") {
+        unique_lock<mutex> lock(cout_mutex);
+        if (args.size() > 1) cout << args[1] << endl;
+    }
+    else if (args[0] == "dummy") {
+        // Do nothing
+    }
+    else if (args[0] == "gcd") {
+        if (args.size() > 2) {
+            int a = stoi(args[1]);
+            int b = stoi(args[2]);
             unique_lock<mutex> lock(cout_mutex);
-            if (args.size() > 1) cout << args[1] << endl;
+            cout << gcd(a, b) << endl;
         }
-        else if (args[0] == "dummy") {
+    }
+    else if (args[0] == "prime") {
+        if (args.size() > 1) {
+            int n = stoi(args[1]);
+            unique_lock<mutex> lock(cout_mutex);
+            cout << prime_count(n) << endl;
         }
-        else if (args[0] == "gcd") {
-            if (args.size() > 2) {
-                int a = stoi(args[1]);
-                int b = stoi(args[2]);
-                unique_lock<mutex> lock(cout_mutex);
-                cout << gcd(a, b) << endl;
-            }
-        }
-        else if (args[0] == "prime") {
-            if (args.size() > 1) {
-                int n = stoi(args[1]);
-                unique_lock<mutex> lock(cout_mutex);
-                cout << prime_count(n) << endl;
-            }
-        }
-        else if (args[0] == "sum") {
-            if (args.size() > 1) {
-                int n = stoi(args[1]);
-                int m = 1;
-                for (size_t i = 2; i < args.size(); ++i) {
-                    if (args[i] == "-m" && i + 1 < args.size()) {
-                        m = stoi(args[++i]);
-                    }
+    }
+    else if (args[0] == "sum") {
+        if (args.size() > 1) {
+            int n = stoi(args[1]);
+            int m = 1;
+            for (size_t i = 2; i < args.size(); ++i) {
+                if (args[i] == "-m" && i + 1 < args.size()) {
+                    m = stoi(args[++i]);
                 }
-                unique_lock<mutex> lock(cout_mutex);
-                cout << sum(n, m) << endl;
             }
-        }
-        if (is_bg) {
             unique_lock<mutex> lock(cout_mutex);
-            bg_count--;
+            cout << sum(n, m) << endl;
         }
-        if (duration > 0) {
-            auto current_time = chrono::steady_clock::now();
-            auto elapsed = chrono::duration_cast<chrono::seconds>(current_time - start_time).count();
-            if (elapsed >= duration) break;
-        }
-        break;
     }
 }
 
 void thread_function(vector<string> args, int repeat, int period, int duration) {
-    for (int i = 0; i < repeat; ++i) {
-        execute_command(args, true, duration);
-        this_thread::sleep_for(chrono::seconds(period));
+    auto start_time = chrono::steady_clock::now();
+    int executed = 0;
+
+    while (true) {
+        auto current_time = chrono::steady_clock::now();
+        auto elapsed = chrono::duration_cast<chrono::seconds>(current_time - start_time).count();
+        if (duration > 0 && elapsed >= duration) break;
+
+        for (int i = 0; i < repeat; ++i) {
+            execute_command(args);
+        }
+
+        executed++;
+        if (executed * period >= duration) break; // If the next period exceeds the duration, break
+        if (executed < duration / period) {
+            this_thread::sleep_for(chrono::seconds(period));
+        }
+        else {
+            break;
+        }
     }
 }
 
@@ -135,9 +140,13 @@ vector<string> parse(const string& command) {
     return split(command, ' ');
 }
 
-void exec(vector<string> args, bool is_bg = false, int duration = 0) {
-    if (args.empty()) return;
-    execute_command(args, is_bg, duration);
+void exec(vector<string> args, bool is_bg, int repeat, int period, int duration) {
+    if (is_bg) {
+        thread(thread_function, args, repeat, period, duration).detach();
+    }
+    else {
+        thread_function(args, repeat, period, duration);
+    }
 }
 
 void processCommands(const string& filename, int interval) {
@@ -159,7 +168,6 @@ void processCommands(const string& filename, int interval) {
             if (!args.empty() && args[0].front() == '&') {
                 args[0] = args[0].substr(1);
                 is_bg = true;
-                bg_count++;
             }
 
             for (size_t i = 0; i < args.size(); ++i) {
@@ -174,23 +182,7 @@ void processCommands(const string& filename, int interval) {
                 }
             }
 
-            if (is_bg) {
-                bg_threads.emplace_back(thread_function, args, repeat, period, duration);
-            }
-            else {
-                for (int i = 0; i < repeat; ++i) {
-                    exec(args, false, duration);
-                    if (period > 0) {
-                        this_thread::sleep_for(chrono::seconds(period));
-                    }
-                }
-            }
-        }
-
-        for (auto& th : bg_threads) {
-            if (th.joinable()) {
-                th.detach();
-            }
+            exec(args, is_bg, repeat, period, duration);
         }
 
         this_thread::sleep_for(chrono::seconds(interval));
